@@ -19,7 +19,7 @@ namespace NPOI.Extension
     /// <param name="cell">The cell of the excel sheet.</param>
     /// <param name="value">The value to convert.</param>
     /// <returns>The converted value.</returns>
-    public delegate object ValueConverter(int row, int cell, object value);
+    public delegate object ValueConverter(IRow row, int cellIndex, object cellValue);
 
     /// <summary>
     /// Provides some methods for loading <see cref="IEnumerable{T}"/> from excel.
@@ -165,7 +165,7 @@ namespace NPOI.Extension
                     var value = row.GetCellValue(index);
 					if (valueConverter != null)
 					{
-						value = valueConverter(row.RowNum, index, value);
+						value = valueConverter(row, index, value);
 					}
 
                     if (value == null) 
@@ -223,7 +223,13 @@ namespace NPOI.Extension
                 // This is a trick to get the correct value of the cell.
                 // NumericCellValue will return a numeric value no matter the cell value is a date or a number.
                 case CellType.Numeric:
-                    return cell.ToString();
+                    if (DateUtil.IsCellDateFormatted(cell))//基本日期类型,并未涵盖所有(如:yyyy年mm月dd日...)
+                    {
+                        return cell.DateCellValue;
+                    }
+
+                    //其他数字类型
+                    return cell.NumericCellValue;
                 case CellType.String:
                     return cell.StringCellValue;
                 case CellType.Boolean:
@@ -233,7 +239,27 @@ namespace NPOI.Extension
 
                 // how?
                 case CellType.Formula:
-                    return cell.ToString();
+                    var eva = cell.Sheet.Workbook.GetCreationHelper().CreateFormulaEvaluator();
+                    var cellValue = eva.Evaluate(cell);
+                    switch (cellValue.CellType)
+                    {
+                        case CellType.Numeric:
+                            return cellValue.NumberValue;
+                        case CellType.String:
+                            return cellValue.StringValue;
+                        case CellType.Boolean:
+                            return cellValue.BooleanValue;
+                        case CellType.Error:
+                            return cellValue.ErrorValue;
+
+                        case CellType.Formula:
+                            return cell.ToString();
+
+                        case CellType.Blank:
+                        case CellType.Unknown:
+                        default:
+                            return null;
+                    }
 
                 case CellType.Blank:
                 case CellType.Unknown:
